@@ -1,12 +1,20 @@
 import { Markup } from "telegraf";
 import type { Telegram } from "telegraf";
+import type { InlineKeyboardButton } from "telegraf/types";
 import { getConfig } from "./config.js";
 
 export function inlineKeyboard() {
 	const config = getConfig();
-	return Markup.inlineKeyboard(
-		config.buttons.map((b) => Markup.button.url(b.label, b.url)),
-	);
+	const perRow = 2;
+	const rows: InlineKeyboardButton[][] = [];
+	for (let i = 0; i < config.buttons.length; i += perRow) {
+		rows.push(
+			config.buttons
+				.slice(i, i + perRow)
+				.map((b) => Markup.button.url(b.label, b.url)),
+		);
+	}
+	return Markup.inlineKeyboard(rows);
 }
 
 export async function postToChannel(
