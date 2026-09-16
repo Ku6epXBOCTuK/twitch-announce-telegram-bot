@@ -1,0 +1,139 @@
+# Poster Bot — Telegram + Twitch на Vercel
+
+Бот в личке: присылаешь ему сообщение → он постит его в канал с кнопками
+(Twitch / GitHub). Когда начинается стрим на Twitch → бот постит в тот же канал
+уведомление о запуске. Без серверов: только webhook, serverless Vercel.
+
+Технический план: [`docs/PLAN-BOT.md`](docs/PLAN-BOT.md).
+
+## Что тебе понадобится сделать один раз
+
+1. Создать Telegram-бота и канал — [Шаг 1](#1-telegram-бот-и-канал)
+2. Создать Twitch-приложение и узнать ID канала — [Шаг 2](#2-twitch-приложение-и-id-канала)
+3. Сгенерировать `EVENTSUB_SECRET` — [Шаг 3](#3-секрет-eventsub_secret)
+4. Создать проект на Vercel и сохранить секреты — [Шаг 4](#4-vercel)
+5. Задеплоить и включить webhook + подписку — [Шаг 5](#5-после-деплоя-один-раз)
+
+Вся настройка руками занимает **~20 минут**.
+
+---
+
+## Сводка секретов
+
+| Переменная                   | Обязательный | Откуда берёшь                                           | Что это                               |
+| ---------------------------- | ------------ | ------------------------------------------------------- | ------------------------------------- |
+| `TELEGRAM_BOT_TOKEN`         | да           | Шаг 1: @BotFather                                       | токен бота                            |
+| `TELEGRAM_CHANNEL_ID`        | да           | Шаг 1: id канала (`@channel` или `-100...`)             | куда постить                          |
+| `ALLOWED_USER_IDS`           | да           | Шаг 1: твой Telegram user_id                            | кто может отправлять сообщения боту   |
+| `TELEGRAM_WEBHOOK_SECRET`    | нет          | придумать самому                                        | защита webhook Telegram (желательно)  |
+| `TWITCH_CLIENT_ID`           | да           | Шаг 2: dev.twitch.tv → приложение                       | идентификатор приложения              |
+| `TWITCH_CLIENT_SECRET`       | да           | Шаг 2: там же                                           | секрет приложения                     |
+| `TWITCH_BROADCASTER_USER_ID` | да           | Шаг 2: числовой ID канала через API                     | чей стрим отслеживаем                 |
+| `EVENTSUB_SECRET`            | да           | Шаг 3: сгенерировать (**после подписки менять нельзя**) | ключ проверки подписей webhook Twitch |
+| `PUBLIC_BASE_URL`            | да           | Шаг 4: домен `https://<проект>.vercel.app`              | адрес твоих функций                   |
+| `BUTTONS`                    | нет          | опционально                                             | кнопки в посте, формат `label:url     |
+
+---
+
+## 1. Telegram: бот и канал
+
+1. Напиши в поиске Telegram **[BotFather](https://t.me/BotFather)** → `/newbot`
+   → имя → username (заканчивается на `bot`) → выдаст токен вида
+   `123456:AAF...`. Он и есть `TELEGRAM_BOT_TOKEN`.
+2. Создай канал (или используй существующий). Добавь бота в него **админом**.
+3. Узнай ID канала:
+   - публичный: просто `@username` канала (например `@my_posts`);
+   - приватный: отправь в канал любое сообщение, потом в браузере открой
+     `https://api.telegram.org/bot<ТОКЕН>/getUpdates` — в JSON найди
+     `"chat": {"id": -100...}` — это `TELEGRAM_CHANNEL_ID`.
+4. `ALLOWED_USER_IDS` — твой user_id. Узнать: напиши сообщение
+   [@userinfobot](https://t.me/userinfobot) — там `Id: NNNNNNN`.
+5. `TELEGRAM_WEBHOOK_SECRET` — придумай любую строку (не важно какую, но
+   длинную). Она же понадобится на [Шаге 5](#5-после-деплоя-один-раз).
+
+## 2. Twitch: приложение и ID канала
+
+1. [dev.twitch.tv](https://dev.twitch.tv/console/apps) → **Register Your
+   Application**:
+   - Name — любое (например `poster-bot`);
+   - OAuth Redirect URL — можно `http://localhost`;
+   - Category — Application Integration.
+     Запиши **Client ID** и кликни **New Secret** → **Client Secret**.
+2. Числовой ID канала (`TWITCH_BROADCASTER_USER_ID`) — через API. Сначала
+   получи app-токен (в PowerShell/cmd, Windows curl есть):
+
+   ```bash
+   curl -X POST "https://id.twitch.tv/oauth2/token" -d "client_id=<CLIENT_ID>&client_secret=<CLIENT_SECRET>&grant_type=client_credentials"
+   ```
+
+   Из ответа возьми `access_token` и:
+
+   ```bash
+   curl -X GET "https://api.twitch.tv/helix/users?login=<ТВОЙ_ЛОГИН>" -H "Client-Id: <CLIENT_ID>" -H "Authorization: Bearer <ACCESS_TOKEN>"
+   ```
+
+   В ответе `"id": "..."` — это и есть `TWITCH_BROADCASTER_USER_ID`.
+
+3. Webhook-функциональность EventSub в приложении доступна: зайди в
+   dev.twitch.tv — приложение уже имеет нужное. Дополнительные настройки не
+   требуются.
+
+## 3. Секрет EVENTSUB_SECRET
+
+Сгенерируй **один раз** (64 hex-символа — укладывается в лимит Twitch 10–100
+ASCII):
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+Сохрани значение в менеджере паролей. **Правило:** после создания подписки
+этот секрет зафиксирован внутри подписки на сервере Twitch. Менять в env —
+только вместе с удалением и пересозданием подписки (см. управление ниже).
+
+## 4. Vercel
+
+1. Создай проект: [vercel.com/new](https://vercel.com/new) → Import. Репо
+   можно подключить позже; минимально достаточно `vercel link` из CLI или
+   задеплоить через `vercel --prod`.
+2. **Environment Variables** — Settings → Environment Variables → Add. Внеси
+   **все** переменные из таблицы выше (для всех окружений: Development,
+   Preview, Production). Значения те же, что в `.env` локально.
+3. Забери домен: Deployments → твой деплой → URL вида
+   `https://<project>-<hash>.vercel.app`. Удобнее задать своё имя подпроекта
+   (`Settings → Project name`) и использовать
+   `https://<project>.vercel.app`. Это значение `PUBLIC_BASE_URL` — указывает
+   сюда же, без `www` и без слэша на конце.
+
+## 5. После деплоя (один раз)
+
+1. Проверь, что функции живы:
+   `https://<project>.vercel.app/api/setup` (GET) — вернёт JSON со статусом
+   конфигурации.
+2. Включи Telegram webhook:
+
+   ```bash
+   curl -X POST "https://api.telegram.org/bot<ТОКЕН>/setWebhook" -H "Content-Type: application/json" -d "{\"url\":\"https://<project>.vercel.app/api/telegram\",\"secret_token\":\"<TELEGRAM_WEBHOOK_SECRET>\"}"
+   ```
+
+   Ответ: `{"ok":true}`. Проверка:
+   `https://api.telegram.org/bot<ТОКЕН>/getWebhookInfo`.
+
+3. Создай Twitch-подписку:
+   - из бота: напиши `/menu` → **Включить**;
+   - или GET `https://<project>.vercel.app/api/setup`;
+   - или локально: `npm run subscribe`.
+     Подписка идемпотентная: повторный запуск дубль не создаст.
+
+## Управление подпиской
+
+| Действие               | Как                                                 |
+| ---------------------- | --------------------------------------------------- |
+| Статус                 | бот: `/menu` → «Статус подписки» / `npm run status` |
+| Включить / пересоздать | бот: `/menu` → «Включить» / `npm run subscribe`     |
+| Выключить              | бот: `/menu` → «Выключить» / `npm run unsubscribe`  |
+
+Важно: подписка у Twitch **не истекает**, но Твич может её отозвать сам при
+длительной недоступности callback. При удалении приложения в dev.twitch.tv —
+сначала выключи подписку в боте, иначе события продолжат лететь на старый
+адрес.
