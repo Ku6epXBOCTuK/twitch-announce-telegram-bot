@@ -77,7 +77,7 @@ function buildConfig(): AppConfig {
 		buttons,
 		templates: {
 			// сообщение из бота (1:1 как было), без шаблонизации
-			streamOnline: "🎬 {channel} запустился!\n\n{title}\nИгра: {gameName}",
+			streamOnline: "🎬 {channel} запустила стрим, не пропусти!\n\n{title}",
 		},
 	};
 }
