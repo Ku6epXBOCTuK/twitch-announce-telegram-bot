@@ -1,10 +1,11 @@
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { ApiClient } from "@twurple/api";
 import { AppTokenAuthProvider } from "@twurple/auth";
 import { config } from "./config.js";
 
 let client: ApiClient | null = null;
 
-function getApiClient(): ApiClient {
+export function getApiClient(): ApiClient {
 	if (!client) {
 		const provider = new AppTokenAuthProvider(
 			config.twitch.clientId,
@@ -13,6 +14,22 @@ function getApiClient(): ApiClient {
 		client = new ApiClient({ authProvider: provider });
 	}
 	return client;
+}
+
+/** Проверка подписи EventSub: HMAC-SHA256(secret, messageId + timestamp + rawBody). */
+export function verifyEventSubSignature(
+	messageId: string,
+	timestamp: string,
+	signature: string,
+	rawBody: string,
+): boolean {
+	const digest = createHmac("sha256", config.twitch.eventSubSecret)
+		.update(messageId + timestamp + rawBody)
+		.digest("hex");
+	const expected = Buffer.from(`sha256=${digest}`);
+	const received = Buffer.from(String(signature));
+	if (expected.length !== received.length) return false;
+	return timingSafeEqual(expected, received);
 }
 
 function broadcasterUserIdOf(sub: { condition: unknown }): string | undefined {
