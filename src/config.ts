@@ -49,13 +49,12 @@ function parseUserIds(raw: string | undefined): number[] {
 		.filter((id) => Number.isFinite(id));
 }
 
-function parseButtons(raw: string | undefined): Button[] {
-	if (!raw) return [{ label: "Twitch", url: "https://twitch.tv/" }];
-	return raw.split("|").map((pair) => {
-		const [label, url] = pair.split(":", 2);
-		return { label: label.trim(), url: url.trim() };
-	});
-}
+const buttons: Button[] = [
+	{ label: "Twitch", url: "https://www.twitch.tv/ku6epxboctuk" },
+	{ label: "Чатик", url: "https://t.me/Ku6epXBOCTuK_chat" },
+	{ label: "GitHub", url: "https://github.com/Ku6epXBOCTuK" },
+	{ label: "Мой сайт", url: "https://ku6epxboctuk.is-a.dev/" },
+];
 
 function buildConfig(): AppConfig {
 	const baseUrl = requiredEnv("PUBLIC_BASE_URL").replace(/\/+$/, "");
@@ -75,7 +74,7 @@ function buildConfig(): AppConfig {
 			eventSubSecret: requiredEnv("EVENTSUB_SECRET"),
 		},
 		baseUrl,
-		buttons: parseButtons(process.env.BUTTONS),
+		buttons,
 		templates: {
 			// сообщение из бота (1:1 как было), без шаблонизации
 			streamOnline: "🎬 {channel} запустился!\n\n{title}\nИгра: {gameName}",
