@@ -1,12 +1,13 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { ApiClient } from "@twurple/api";
 import { AppTokenAuthProvider } from "@twurple/auth";
-import { config } from "./config.js";
+import { getConfig } from "./config.js";
 
 let client: ApiClient | null = null;
 
 export function getApiClient(): ApiClient {
 	if (!client) {
+		const config = getConfig();
 		const provider = new AppTokenAuthProvider(
 			config.twitch.clientId,
 			config.twitch.clientSecret,
@@ -23,6 +24,7 @@ export function verifyEventSubSignature(
 	signature: string,
 	rawBody: string,
 ): boolean {
+	const config = getConfig();
 	const digest = createHmac("sha256", config.twitch.eventSubSecret)
 		.update(messageId + timestamp + rawBody)
 		.digest("hex");
@@ -38,6 +40,7 @@ function broadcasterUserIdOf(sub: { condition: unknown }): string | undefined {
 }
 
 async function getMine() {
+	const config = getConfig();
 	const subs =
 		await getApiClient().eventSub.getSubscriptionsForType("stream.online");
 	return subs.data.filter(
@@ -69,6 +72,7 @@ export async function subscribeIfNeeded(): Promise<{
 	);
 	if (broken) await getApiClient().eventSub.deleteSubscription(broken.id);
 
+	const config = getConfig();
 	const created = await getApiClient().eventSub.createSubscription(
 		"stream.online",
 		"1",

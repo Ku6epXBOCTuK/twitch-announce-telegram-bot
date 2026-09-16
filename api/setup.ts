@@ -1,16 +1,27 @@
-import { config as appConfig } from "../src/config.js";
-import { getEventSubStatus, subscribeIfNeeded } from "../src/twitch.js";
+import type { AppConfig } from "../src/config.js";
+import { jsonError } from "../src/http.js";
 
 export const config = { runtime: "nodejs", maxDuration: 30 };
 
 const TELEGRAM_API = "https://api.telegram.org";
+
+async function load(): Promise<{
+	appConfig: AppConfig;
+	twitch: typeof import("../src/twitch.js");
+}> {
+	const [{ getConfig }, twitch] = await Promise.all([
+		import("../src/config.js"),
+		import("../src/twitch.js"),
+	]);
+	return { appConfig: getConfig(), twitch };
+}
 
 async function fetchJson(url: string, init?: RequestInit): Promise<unknown> {
 	const res = await fetch(url, init);
 	return (await res.json()) as unknown;
 }
 
-async function setTelegramWebhook() {
+async function setTelegramWebhook(appConfig: AppConfig) {
 	const body: Record<string, unknown> = {
 		url: `${appConfig.baseUrl}/api/telegram`,
 	};
@@ -28,6 +39,14 @@ async function setTelegramWebhook() {
 }
 
 export async function GET(): Promise<Response> {
+	let appConfig: AppConfig;
+	let twitch: Awaited<ReturnType<typeof load>>["twitch"];
+	try {
+		({ appConfig, twitch } = await load());
+	} catch (err) {
+		return jsonError(err);
+	}
+
 	const status = {
 		env: {
 			telegramTokenSet: Boolean(appConfig.telegram.token),
@@ -49,7 +68,7 @@ export async function GET(): Promise<Response> {
 	}
 
 	try {
-		const sub = await getEventSubStatus();
+		const sub = await twitch.getEventSubStatus();
 		status.subscription = sub
 			? { id: sub.id, type: sub.type, status: sub.status }
 			: null;
@@ -61,9 +80,17 @@ export async function GET(): Promise<Response> {
 }
 
 export async function POST(): Promise<Response> {
+	let appConfig: AppConfig;
+	let twitch: Awaited<ReturnType<typeof load>>["twitch"];
+	try {
+		({ appConfig, twitch } = await load());
+	} catch (err) {
+		return jsonError(err);
+	}
+
 	const [webhookResult, subscriptionResult] = await Promise.all([
-		setTelegramWebhook().catch((err) => ({ error: String(err) })),
-		subscribeIfNeeded().catch((err) => ({ error: String(err) })),
+		setTelegramWebhook(appConfig).catch((err) => ({ error: String(err) })),
+		twitch.subscribeIfNeeded().catch((err) => ({ error: String(err) })),
 	]);
 	return Response.json({
 		webhook: webhookResult,

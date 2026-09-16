@@ -1,9 +1,26 @@
-import { config as appConfig } from "../src/config.js";
-import { bot } from "../src/telegram.js";
+import type { Telegraf } from "telegraf";
+import type { AppConfig } from "../src/config.js";
+import { jsonError } from "../src/http.js";
 
 export const config = { runtime: "nodejs", maxDuration: 10 };
 
+async function load(): Promise<{ appConfig: AppConfig; bot: Telegraf }> {
+	const [{ getConfig }, { getBot }] = await Promise.all([
+		import("../src/config.js"),
+		import("../src/telegram.js"),
+	]);
+	return { appConfig: getConfig(), bot: getBot() };
+}
+
 export async function POST(request: Request): Promise<Response> {
+	let appConfig: AppConfig;
+	let bot: Telegraf;
+	try {
+		({ appConfig, bot } = await load());
+	} catch (err) {
+		return jsonError(err);
+	}
+
 	const secretToken = request.headers.get("x-telegram-bot-api-secret-token");
 	if (
 		appConfig.telegram.webhookSecret &&

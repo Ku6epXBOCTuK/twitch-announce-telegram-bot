@@ -1,7 +1,6 @@
-import { config as appConfig } from "../src/config.js";
-import { getApiClient, verifyEventSubSignature } from "../src/twitch.js";
-import { postToChannel, renderTemplate } from "../src/share.js";
-import { bot } from "../src/telegram.js";
+import type { Telegraf } from "telegraf";
+import type { AppConfig } from "../src/config.js";
+import { jsonError } from "../src/http.js";
 
 export const config = { runtime: "nodejs", maxDuration: 10 };
 
@@ -14,7 +13,37 @@ type Notification = {
 	};
 };
 
+async function load(): Promise<{
+	appConfig: AppConfig;
+	bot: Telegraf;
+	twitch: typeof import("../src/twitch.js");
+	share: typeof import("../src/share.js");
+}> {
+	const [configModule, botModule, twitch, share] = await Promise.all([
+		import("../src/config.js"),
+		import("../src/telegram.js"),
+		import("../src/twitch.js"),
+		import("../src/share.js"),
+	]);
+	return {
+		appConfig: configModule.getConfig(),
+		bot: botModule.getBot(),
+		twitch,
+		share,
+	};
+}
+
 export async function POST(request: Request): Promise<Response> {
+	let appConfig: AppConfig;
+	let bot: Telegraf;
+	let twitch: Awaited<ReturnType<typeof load>>["twitch"];
+	let share: Awaited<ReturnType<typeof load>>["share"];
+	try {
+		({ appConfig, bot, twitch, share } = await load());
+	} catch (err) {
+		return jsonError(err);
+	}
+
 	const rawBody = await request.text();
 	const messageType = request.headers.get("twitch-eventsub-message-type") ?? "";
 
@@ -39,7 +68,7 @@ export async function POST(request: Request): Promise<Response> {
 		request.headers.get("twitch-eventsub-message-timestamp") ?? "";
 	const signature =
 		request.headers.get("twitch-eventsub-message-signature") ?? "";
-	if (!verifyEventSubSignature(messageId, timestamp, signature, rawBody)) {
+	if (!twitch.verifyEventSubSignature(messageId, timestamp, signature, rawBody)) {
 		return new Response("bad signature", { status: 403 });
 	}
 
@@ -61,19 +90,17 @@ export async function POST(request: Request): Promise<Response> {
 
 	try {
 		const event = notification.event ?? {};
-		const stream = await getApiClient().streams.getStreamByUserId(
+		const stream = await twitch.getApiClient().streams.getStreamByUserId(
 			event.broadcaster_user_id ?? "",
 		);
-		const text = renderTemplate(appConfig.templates.streamOnline, {
+		const text = share.renderTemplate(appConfig.templates.streamOnline, {
 			channel:
-				event.broadcaster_user_name ??
-				event.broadcaster_user_login ??
-				"стример",
+				event.broadcaster_user_name ?? event.broadcaster_user_login ?? "стример",
 			title: stream?.title ?? "—",
 			gameName: stream?.gameName ?? "—",
 			startedAt: stream?.startDate?.toISOString() ?? "—",
 		});
-		await postToChannel(bot.telegram, text);
+		await share.postToChannel(bot.telegram, text);
 	} catch (err) {
 		console.error("stream.online handling failed:", err);
 	}
