@@ -75,17 +75,17 @@ export async function POST(request: Request): Promise<Response> {
 	// 3. Твич сам отозвал подписку — логируем причину.
 	if (messageType === "revocation") {
 		console.warn("EventSub revocation:", rawBody);
-		return new Response("ok", { status: 204 });
+		return new Response(null, { status: 204 });
 	}
 
 	if (messageType !== "notification") {
-		return new Response("ok", { status: 204 });
+		return new Response(null, { status: 204 });
 	}
 
 	// 4. Обработка события запуска стрима.
 	const notification = JSON.parse(rawBody) as Notification;
 	if (notification.subscription?.type !== "stream.online") {
-		return new Response("ok", { status: 204 });
+		return new Response(null, { status: 204 });
 	}
 
 	try {
@@ -105,5 +105,5 @@ export async function POST(request: Request): Promise<Response> {
 		console.error("stream.online handling failed:", err);
 	}
 
-	return new Response("ok", { status: 204 });
+	return new Response(null, { status: 204 });
 }

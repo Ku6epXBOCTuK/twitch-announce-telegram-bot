@@ -14,6 +14,7 @@
 	},
 	"scripts": {
 		"typecheck": "tsc --noEmit",
+		"test:stream-online": "pnpm exec tsx scripts/test-webhook.ts",
 		"dev": "vercel dev",
 		"format": "prettier --write . --log-level=warn",
 		"subscribe": "tsx scripts/subscribe.ts",
