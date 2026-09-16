@@ -1,19 +1,20 @@
 # Poster Bot — план
 
-Отдельный документ рядом с `PLAN.md`: связан с ним только общей темой «постинг в канал Telegram».
-Технологии не пересекаются: там Rust + десктоп, здесь TypeScript + Vercel serverless.
+Отдельный документ рядом с `PLAN.md`: связан с ним только общей темой «постинг в
+канал Telegram». Технологии не пересекаются: там Rust + десктоп, здесь
+TypeScript + Vercel serverless.
 
 ## Назначение
 
 Telegram-бот с **двумя функциями**:
 
-1. Когда владелец (по `user_id`) присылает боту сообщение, бот добавляет две inline-кнопки
-   (ссылки на Twitch и GitHub) и постит это сообщение в канал.
+1. Когда владелец (по `user_id`) присылает боту сообщение, бот добавляет две
+   inline-кнопки (ссылки на Twitch и GitHub) и постит это сообщение в канал.
 2. Когда начинается стрим на Twitch, бот постит в тот же канал уведомление
    (заголовок, игра из Helix) с теми же двумя кнопками.
 
-Всё конфигурируемо через `config.ts` + `.env`. Без длительных соединений — только webhook,
-работает на serverless Vercel.
+Всё конфигурируемо через `config.ts` + `.env`. Без длительных соединений —
+только webhook, работает на serverless Vercel.
 
 ## Вердикт исследования: возможно ✅
 
@@ -35,18 +36,19 @@ Telegram-бот с **двумя функциями**:
 | `dotenv`        | локальный прогон (`vercel dev`)                        | ^16 (dev)             |
 | `@vercel/node`  | типы Vercel-хендлеров                                  | только для разработки |
 
-**Не нужны:** `express`, `@twurple/eventsub-http`, `@twurple/eventsub-ws`, никакие KV/Redis.
+**Не нужны:** `express`, `@twurple/eventsub-http`, `@twurple/eventsub-ws`,
+никакие KV/Redis.
 
 ## Почему не `@twurple/eventsub-http` (важно)
 
-`EventSubHttpListener` поднимает постоянный HTTP-сервер и держит подписки в памяти.
-На Vercel функция живёт ≤1 запроса и умирает — listener нежизнеспособен.
+`EventSubHttpListener` поднимает постоянный HTTP-сервер и держит подписки в
+памяти. На Vercel функция живёт ≤1 запроса и умирает — listener нежизнеспособен.
 
-Решение: принимаем EventSub **руками** (~40 строк). Алгоритм 1-в-1 из кода twurple
-(`packages/eventsub-http/src/EventSubHttpBase.ts`, метод `_verifyData`):
+Решение: принимаем EventSub **руками** (~40 строк). Алгоритм 1-в-1 из кода
+twurple (`packages/eventsub-http/src/EventSubHttpBase.ts`, метод `_verifyData`):
 
-1. Заголовок `Twitch-Eventsub-Message-Type` = `webhook_callback_verification`
-   → отвечаем `200` с телом = `challenge` (text/plain).
+1. Заголовок `Twitch-Eventsub-Message-Type` = `webhook_callback_verification` →
+   отвечаем `200` с телом = `challenge` (text/plain).
 2. Иначе: подпись `Twitch-Eventsub-Message-Signature` = `sha256=<hex>`.
    Вычислить `HMAC-SHA256(secret, messageId + timestamp + rawBody)` и сравнить
    через `crypto.timingSafeEqual`.
@@ -65,7 +67,8 @@ Telegram-бот с **двумя функциями**:
 | `api/setup.ts`    | `GET/POST /api/setup` | идемпотентный сетап: `setWebhook` + подписка (создастся, только если нет) |
 
 Telegram `setWebhook` указывает на `https://<project>.vercel.app/api/telegram`.
-То же значение `PUBLIC_BASE_URL` используется как `callback` при создании EventSub-подписки.
+То же значение `PUBLIC_BASE_URL` используется как `callback` при создании
+EventSub-подписки.
 
 Всё POST, каждый хендлер завершается <1 сек. Холодные старты не проблема.
 
@@ -99,8 +102,8 @@ export default bot.webhookCallback("/api/telegram");
 ### Создание подписки (идемпотентно)
 
 Повторный запуск не должен плодить дубли: у Twitch лимит **3 одинаковых**
-подписок (`type` + `condition`), а лишний дубль = дубли уведомлений.
-Поэтому перед созданием — проверяем существующие.
+подписок (`type` + `condition`), а лишний дубль = дубли уведомлений. Поэтому
+перед созданием — проверяем существующие.
 
 ```ts
 const provider = new AppTokenAuthProvider(clientId, clientSecret);
@@ -139,8 +142,8 @@ await apiClient.eventSub.createSubscription({
 });
 ```
 
-`getSubscriptions` / `deleteSubscription` / `createSubscription` подтверждены
-в `@twurple/api` 8.x (`HelixEventSubApi`). Сразу после создания статус —
+`getSubscriptions` / `deleteSubscription` / `createSubscription` подтверждены в
+`@twurple/api` 8.x (`HelixEventSubApi`). Сразу после создания статус —
 `webhook_callback_verification_pending`, после успешного challenge — `enabled`.
 
 ### Проверка: активна ли подписка
@@ -174,17 +177,17 @@ for (const s of subs.data) {
 }
 ```
 
-Важно: при удалении приложения в dev.twitch.tv — сначала удалить подписку,
-иначе Твич продолжит слать события на старый callback.
+Важно: при удалении приложения в dev.twitch.tv — сначала удалить подписку, иначе
+Твич продолжит слать события на старый callback.
 
 ### Обработка события
 
 1. Проверить подпись (см. выше).
 2. `subscription.type === 'stream.online'`.
-3. Получить данные стрима: `apiClient.streams.getStreamByUserId(broadcasterId)` —
-   оттуда `title`, `gameName`, `startedAt`, `thumbnailUrl`.
-4. Сформировать текст по шаблону `templateStreamOnline` и отправить канал с кнопками —
-   та же общая функция, что в части 1.
+3. Получить данные стрима: `apiClient.streams.getStreamByUserId(broadcasterId)`
+   — оттуда `title`, `gameName`, `startedAt`, `thumbnailUrl`.
+4. Сформировать текст по шаблону `templateStreamOnline` и отправить канал с
+   кнопками — та же общая функция, что в части 1.
 
 ### Bacon: данные для шаблона
 
@@ -197,9 +200,9 @@ for (const s of subs.data) {
 
 ### Кнопки не мешают постингу
 
-Нажатие inline-кнопки приходит как `callback_query`, а в «пост в канал»
-попадают только `message` с текстом — это разные типы апдейтов. Конфликта нет.
-Правило одно: всё, что не свободный текст владельца, отсекаем до отправки.
+Нажатие inline-кнопки приходит как `callback_query`, а в «пост в канал» попадают
+только `message` с текстом — это разные типы апдейтов. Конфликта нет. Правило
+одно: всё, что не свободный текст владельца, отсекаем до отправки.
 
 ```ts
 bot.on(message("text"), async (ctx) => {
@@ -289,7 +292,8 @@ config = {
 };
 ```
 
-Плейсхолдеры в `streamOnline`: `{channel}`, `{title}`, `{gameName}`, `{startedAt}`.
+Плейсхолдеры в `streamOnline`: `{channel}`, `{title}`, `{gameName}`,
+`{startedAt}`.
 
 ## Структура проекта
 
@@ -321,18 +325,23 @@ poster-bot/
 4. Twitch-приём: `api/twitch.ts`, HMAC, обработка `stream.online` — **~1 ч**
 5. Шаблоны, кнопки, полировка, документ setup в README — **~1 ч**
 
-Итого ~ **полдня**. Тестирование: `vercel dev` локально, затем `vercel deploy --prod`
-и проверка через Twitch CLI: `twitch event trigger streamup -F <url>/api/twitch -s <secret>`
-(или реальный запуск стрима).
+Итого ~ **полдня**. Тестирование: `vercel dev` локально, затем
+`vercel deploy --prod` и проверка через Twitch CLI:
+`twitch event trigger streamup -F <url>/api/twitch -s <secret>` (или реальный
+запуск стрима).
 
 ## Риски и ограничения
 
-1. **`EVENTSUB_SECRET` неизменяем**: после создания подписки менять нельзя — все события
-   начнут падать на проверке подписи. Сменил → удали и пересоздай подписку.
-2. **Редкие дубли** `stream.online` — Твич может прислать повтор. Для личного канала это ок;
-   при желании — дедуп по `started_at` через Vercel KV (опционально).
+1. **`EVENTSUB_SECRET` неизменяем**: после создания подписки менять нельзя — все
+   события начнут падать на проверке подписи. Сменил → удали и пересоздай
+   подписку.
+2. **Редкие дубли** `stream.online` — Твич может прислать повтор. Для личного
+   канала это ок; при желании — дедуп по `started_at` через Vercel KV
+   (опционально).
 3. **HTTPS и скорость ответа**: Vercel из коробки https; на challenge отвечаем
    мгновенно (<5 сек лимит Твича).
-4. **Без авторизации в самом боте**: защита только по `allowedUserIds`, бот приватный.
-5. **Дубли при повторном сетапе**: раньше повторный запуск создавал лишние подписки
-   (Твич допускает до 3 одинаковых). Это закрыто идемпотентной проверкой в части 2.
+4. **Без авторизации в самом боте**: защита только по `allowedUserIds`, бот
+   приватный.
+5. **Дубли при повторном сетапе**: раньше повторный запуск создавал лишние
+   подписки (Твич допускает до 3 одинаковых). Это закрыто идемпотентной
+   проверкой в части 2.

@@ -1,7 +1,7 @@
 # Poster Bot — Telegram + Twitch на Vercel
 
-Бот в личке: присылаешь ему сообщение → он постит его в канал с кнопками
-(Twitch / GitHub). Когда начинается стрим на Twitch → бот постит в тот же канал
+Бот в личке: присылаешь ему сообщение → он постит его в канал с кнопками (Twitch
+/ GitHub). Когда начинается стрим на Twitch → бот постит в тот же канал
 уведомление о запуске. Без серверов: только webhook, serverless Vercel.
 
 Технический план: [`docs/PLAN-BOT.md`](docs/PLAN-BOT.md).
@@ -9,7 +9,8 @@
 ## Что тебе понадобится сделать один раз
 
 1. Создать Telegram-бота и канал — [Шаг 1](#1-telegram-бот-и-канал)
-2. Создать Twitch-приложение и узнать ID канала — [Шаг 2](#2-twitch-приложение-и-id-канала)
+2. Создать Twitch-приложение и узнать ID канала —
+   [Шаг 2](#2-twitch-приложение-и-id-канала)
 3. Сгенерировать `EVENTSUB_SECRET` — [Шаг 3](#3-секрет-eventsub_secret)
 4. Создать проект на Vercel и сохранить секреты — [Шаг 4](#4-vercel)
 5. Задеплоить и включить webhook + подписку — [Шаг 5](#5-после-деплоя-один-раз)
@@ -57,10 +58,10 @@
    Application**:
    - Name — любое (например `poster-bot`);
    - OAuth Redirect URL — можно `http://localhost`;
-   - Category — Application Integration.
-     Запиши **Client ID** и кликни **New Secret** → **Client Secret**.
-2. Числовой ID канала (`TWITCH_BROADCASTER_USER_ID`) — через API. Сначала
-   получи app-токен (в PowerShell/cmd, Windows curl есть):
+   - Category — Application Integration. Запиши **Client ID** и кликни **New
+     Secret** → **Client Secret**.
+2. Числовой ID канала (`TWITCH_BROADCASTER_USER_ID`) — через API. Сначала получи
+   app-токен (в PowerShell/cmd, Windows curl есть):
 
    ```bash
    curl -X POST "https://id.twitch.tv/oauth2/token" -d "client_id=<CLIENT_ID>&client_secret=<CLIENT_SECRET>&grant_type=client_credentials"
@@ -87,29 +88,28 @@ ASCII):
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
 
-Сохрани значение в менеджере паролей. **Правило:** после создания подписки
-этот секрет зафиксирован внутри подписки на сервере Twitch. Менять в env —
-только вместе с удалением и пересозданием подписки (см. управление ниже).
+Сохрани значение в менеджере паролей. **Правило:** после создания подписки этот
+секрет зафиксирован внутри подписки на сервере Twitch. Менять в env — только
+вместе с удалением и пересозданием подписки (см. управление ниже).
 
 ## 4. Vercel
 
-1. Создай проект: [vercel.com/new](https://vercel.com/new) → Import. Репо
-   можно подключить позже; минимально достаточно `vercel link` из CLI или
-   задеплоить через `vercel --prod`.
+1. Создай проект: [vercel.com/new](https://vercel.com/new) → Import. Репо можно
+   подключить позже; минимально достаточно `vercel link` из CLI или задеплоить
+   через `vercel --prod`.
 2. **Environment Variables** — Settings → Environment Variables → Add. Внеси
-   **все** переменные из таблицы выше (для всех окружений: Development,
-   Preview, Production). Значения те же, что в `.env` локально.
+   **все** переменные из таблицы выше (для всех окружений: Development, Preview,
+   Production). Значения те же, что в `.env` локально.
 3. Забери домен: Deployments → твой деплой → URL вида
    `https://<project>-<hash>.vercel.app`. Удобнее задать своё имя подпроекта
-   (`Settings → Project name`) и использовать
-   `https://<project>.vercel.app`. Это значение `PUBLIC_BASE_URL` — указывает
-   сюда же, без `www` и без слэша на конце.
+   (`Settings → Project name`) и использовать `https://<project>.vercel.app`.
+   Это значение `PUBLIC_BASE_URL` — указывает сюда же, без `www` и без слэша на
+   конце.
 
 ## 5. После деплоя (один раз)
 
-1. Проверь, что функции живы:
-   `https://<project>.vercel.app/api/setup` (GET) — вернёт JSON со статусом
-   конфигурации.
+1. Проверь, что функции живы: `https://<project>.vercel.app/api/setup` (GET) —
+   вернёт JSON со статусом конфигурации.
 2. Включи Telegram webhook:
 
    ```bash
@@ -122,8 +122,8 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 3. Создай Twitch-подписку:
    - из бота: напиши `/menu` → **Включить**;
    - или GET `https://<project>.vercel.app/api/setup`;
-   - или локально: `npm run subscribe`.
-     Подписка идемпотентная: повторный запуск дубль не создаст.
+   - или локально: `npm run subscribe`. Подписка идемпотентная: повторный запуск
+     дубль не создаст.
 
 ## Управление подпиской
 
@@ -135,5 +135,4 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 
 Важно: подписка у Twitch **не истекает**, но Твич может её отозвать сам при
 длительной недоступности callback. При удалении приложения в dev.twitch.tv —
-сначала выключи подписку в боте, иначе события продолжат лететь на старый
-адрес.
+сначала выключи подписку в боте, иначе события продолжат лететь на старый адрес.

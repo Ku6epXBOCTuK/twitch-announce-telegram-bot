@@ -1,43 +1,45 @@
 {
-  "name": "tg-bot",
-  "version": "0.1.0",
-  "description": "Telegram + Twitch poster bot on Vercel",
-  "main": "index.js",
-  "author": "Ku6epXBOCTuK",
-  "keywords": [
-    "bot",
-    "telegram",
-    "twitch"
-  ],
-  "engines": {
-    "node": ">=20"
-  },
-  "scripts": {
-    "typecheck": "tsc --noEmit",
-    "dev": "vercel dev",
-    "subscribe": "tsx scripts/subscribe.ts",
-    "status": "tsx scripts/status.ts",
-    "unsubscribe": "tsx scripts/unsubscribe.ts"
-  },
-  "license": "MIT",
-  "devEngines": {
-    "packageManager": {
-      "name": "pnpm",
-      "version": "12.4.1",
-      "onFail": "download"
-    }
-  },
-  "packageManager": "pnpm@12.4.1",
-  "type": "module",
-  "dependencies": {
-    "@twurple/api": "^8.2.0",
-    "@twurple/auth": "^8.2.0",
-    "telegraf": "^4.16.3"
-  },
-  "devDependencies": {
-    "@types/node": "^26.5.1",
-    "dotenv": "^17.4.2",
-    "tsx": "^4.23.13",
-    "typescript": "^7.0.2"
-  }
+	"name": "tg-bot",
+	"version": "0.1.0",
+	"description": "Telegram + Twitch poster bot on Vercel",
+	"main": "index.js",
+	"author": "Ku6epXBOCTuK",
+	"keywords": [
+		"bot",
+		"telegram",
+		"twitch"
+	],
+	"engines": {
+		"node": ">=20"
+	},
+	"scripts": {
+		"typecheck": "tsc --noEmit",
+		"dev": "vercel dev",
+		"format": "prettier --write .",
+		"subscribe": "tsx scripts/subscribe.ts",
+		"status": "tsx scripts/status.ts",
+		"unsubscribe": "tsx scripts/unsubscribe.ts"
+	},
+	"license": "MIT",
+	"devEngines": {
+		"packageManager": {
+			"name": "pnpm",
+			"version": "12.4.1",
+			"onFail": "download"
+		}
+	},
+	"packageManager": "pnpm@12.4.1",
+	"type": "module",
+	"dependencies": {
+		"@twurple/api": "^8.2.0",
+		"@twurple/auth": "^8.2.0",
+		"telegraf": "^4.16.3"
+	},
+	"devDependencies": {
+		"@types/node": "^26.5.1",
+		"dotenv": "^17.4.2",
+		"prettier": "^3.9.6",
+		"tsx": "^4.23.13",
+		"typescript": "^7.0.2"
+	}
 }
