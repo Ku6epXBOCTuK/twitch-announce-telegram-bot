@@ -15,7 +15,7 @@
 	"scripts": {
 		"typecheck": "tsc --noEmit",
 		"dev": "vercel dev",
-		"format": "prettier --write .",
+		"format": "prettier --write . --log-level=warn",
 		"subscribe": "tsx scripts/subscribe.ts",
 		"status": "tsx scripts/status.ts",
 		"unsubscribe": "tsx scripts/unsubscribe.ts"
