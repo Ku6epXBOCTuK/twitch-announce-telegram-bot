@@ -11,7 +11,8 @@
 1. Создать Telegram-бота и канал — [Шаг 1](#1-telegram-бот-и-канал)
 2. Создать Twitch-приложение и узнать ID канала —
    [Шаг 2](#2-twitch-приложение-и-id-канала)
-3. Сгенерировать `EVENTSUB_SECRET` — [Шаг 3](#3-секрет-eventsub_secret)
+3. Сгенерировать секреты `EVENTSUB_SECRET` и `TELEGRAM_WEBHOOK_SECRET` —
+   [Шаг 3](#3-секреты)
 4. Создать проект на Vercel и сохранить секреты — [Шаг 4](#4-vercel)
 5. Задеплоить и включить webhook + подписку — [Шаг 5](#5-после-деплоя-один-раз)
 
@@ -26,10 +27,10 @@
 | `TELEGRAM_BOT_TOKEN`         | да           | Шаг 1: @BotFather                                       | токен бота                            |
 | `TELEGRAM_CHANNEL_ID`        | да           | Шаг 1: id канала (`@channel` или `-100...`)             | куда постить                          |
 | `ALLOWED_USER_IDS`           | да           | Шаг 1: твой Telegram user_id                            | кто может отправлять сообщения боту   |
-| `TELEGRAM_WEBHOOK_SECRET`    | нет          | придумать самому                                        | защита webhook Telegram (желательно)  |
+| `TELEGRAM_WEBHOOK_SECRET`    | нет          | Шаг 3: как и `EVENTSUB_SECRET`                          | защита webhook Telegram (желательно)  |
 | `TWITCH_CLIENT_ID`           | да           | Шаг 2: dev.twitch.tv → приложение                       | идентификатор приложения              |
 | `TWITCH_CLIENT_SECRET`       | да           | Шаг 2: там же                                           | секрет приложения                     |
-| `TWITCH_BROADCASTER_USER_ID` | да           | Шаг 2: числовой ID канала через API                     | чей стрим отслеживаем                 |
+| `TWITCH_BROADCASTER_USER_ID` | да           | Шаг 2: конвертер username → ID                          | чей стрим отслеживаем                 |
 | `EVENTSUB_SECRET`            | да           | Шаг 3: сгенерировать (**после подписки менять нельзя**) | ключ проверки подписей webhook Twitch |
 | `PUBLIC_BASE_URL`            | да           | Шаг 4: домен `https://<проект>.vercel.app`              | адрес твоих функций                   |
 | `BUTTONS`                    | нет          | опционально                                             | кнопки в посте, формат `label:url     |
@@ -49,8 +50,9 @@
      `"chat": {"id": -100...}` — это `TELEGRAM_CHANNEL_ID`.
 4. `ALLOWED_USER_IDS` — твой user_id. Узнать: напиши сообщение
    [@userinfobot](https://t.me/userinfobot) — там `Id: NNNNNNN`.
-5. `TELEGRAM_WEBHOOK_SECRET` — придумай любую строку (не важно какую, но
-   длинную). Она же понадобится на [Шаге 5](#5-после-деплоя-один-раз).
+5. `TELEGRAM_WEBHOOK_SECRET` — сгенерируй так же, как `EVENTSUB_SECRET`
+   ([Шаг 3](#3-секреты)-3). Она же понадобится на
+   [Шаге 5](#5-после-деплоя-один-раз).
 
 ## 2. Twitch: приложение и ID канала
 
@@ -60,37 +62,32 @@
    - OAuth Redirect URL — можно `http://localhost`;
    - Category — Application Integration. Запиши **Client ID** и кликни **New
      Secret** → **Client Secret**.
-2. Числовой ID канала (`TWITCH_BROADCASTER_USER_ID`) — через API. Сначала получи
-   app-токен (в PowerShell/cmd, Windows curl есть):
-
-   ```bash
-   curl -X POST "https://id.twitch.tv/oauth2/token" -d "client_id=<CLIENT_ID>&client_secret=<CLIENT_SECRET>&grant_type=client_credentials"
-   ```
-
-   Из ответа возьми `access_token` и:
-
-   ```bash
-   curl -X GET "https://api.twitch.tv/helix/users?login=<ТВОЙ_ЛОГИН>" -H "Client-Id: <CLIENT_ID>" -H "Authorization: Bearer <ACCESS_TOKEN>"
-   ```
-
-   В ответе `"id": "..."` — это и есть `TWITCH_BROADCASTER_USER_ID`.
+2. Числовой ID канала (`TWITCH_BROADCASTER_USER_ID`) — с помощью конвертера:
+   [streamweasels.com — Twitch username → user ID](https://www.streamweasels.com/tools/convert-twitch-username-to-user-id/).
+   Впиши точный username канала (тот, что в URL стрима) — получишь числовой ID.
 
 3. Webhook-функциональность EventSub в приложении доступна: зайди в
    dev.twitch.tv — приложение уже имеет нужное. Дополнительные настройки не
    требуются.
 
-## 3. Секрет EVENTSUB_SECRET
+## 3. Секреты
 
-Сгенерируй **один раз** (64 hex-символа — укладывается в лимит Twitch 10–100
-ASCII):
+Одной командой генерируются и `EVENTSUB_SECRET`, и `TELEGRAM_WEBHOOK_SECRET` —
+это независимые случайные строки, каждая своим запуском (64 hex-символа —
+укладывается в лимит Twitch 10–100 ASCII):
 
 ```bash
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
 
-Сохрани значение в менеджере паролей. **Правило:** после создания подписки этот
-секрет зафиксирован внутри подписки на сервере Twitch. Менять в env — только
-вместе с удалением и пересозданием подписки (см. управление ниже).
+Сохрани оба значения в менеджере паролей. Правила:
+
+- **`EVENTSUB_SECRET`** — после создания подписки зафиксирован внутри подписки
+  на сервере Twitch. Менять в env — только вместе с удалением и пересозданием
+  подписки (см. управление ниже).
+- **`TELEGRAM_WEBHOOK_SECRET`** — значение должно совпадать с тем, что ты
+  передашь в `secret_token` при включении webhook на
+  [Шаге 5](#5-после-деплоя-один-раз).
 
 ## 4. Vercel
 
@@ -117,7 +114,8 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
    ```
 
    Ответ: `{"ok":true}`. Проверка:
-   `https://api.telegram.org/bot<ТОКЕН>/getWebhookInfo`.
+   `https://api.telegram.org/bot<ТОКЕН>/getWebhookInfo`. В `secret_token`
+   подставь **ту же** строку `TELEGRAM_WEBHOOK_SECRET`, что положила в env.
 
 3. Создай Twitch-подписку:
    - из бота: напиши `/menu` → **Включить**;
