@@ -40,6 +40,13 @@ export async function POST(request: Request): Promise<Response> {
 		await bot.handleUpdate(update as Parameters<typeof bot.handleUpdate>[0]);
 	} catch (err) {
 		console.error("update handling failed:", err);
+		const share = await import("../src/share.js");
+		const details =
+			err instanceof Error ? (err.stack ?? err.message) : String(err);
+		await share.notifyAdmins(
+			bot.telegram,
+			`❌ Ошибка обработки Telegram update:\n${details.slice(0, 1500)}`,
+		);
 	}
 	// Всегда отвечаем 200, чтобы Telegram не ретраил и не плодил дубли постов.
 	return new Response("ok", { status: 200 });

@@ -1,7 +1,7 @@
 import { Markup, Telegraf } from "telegraf";
 import { message } from "telegraf/filters";
 import { getConfig } from "./config.js";
-import { postToChannel } from "./share.js";
+import { notifyAdmins, postToChannel } from "./share.js";
 import {
 	deleteEventSub,
 	getEventSubStatus,
@@ -70,6 +70,12 @@ function createBot(): Telegraf {
 
 	bot.catch((err, ctx) => {
 		console.error("bot error:", err, ctx.update);
+		const details =
+			err instanceof Error ? (err.stack ?? err.message) : String(err);
+		void notifyAdmins(
+			bot.telegram,
+			`❌ Ошибка бота:\n${details.slice(0, 1500)}`,
+		);
 	});
 
 	return bot;

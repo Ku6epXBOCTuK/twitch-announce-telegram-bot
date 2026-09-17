@@ -44,8 +44,11 @@ export async function POST(request: Request): Promise<Response> {
 		return jsonError(err);
 	}
 
+	const notify = (text: string) => share.notifyAdmins(bot.telegram, text);
+
 	const rawBody = await request.text();
 	const messageType = request.headers.get("twitch-eventsub-message-type") ?? "";
+	const messageId = request.headers.get("twitch-eventsub-message-id") ?? "";
 
 	// 1. Подтверждение владения колбэком: вернуть challenge как есть.
 	if (messageType === "webhook_callback_verification") {
@@ -53,6 +56,8 @@ export async function POST(request: Request): Promise<Response> {
 		if (typeof parsed.challenge !== "string") {
 			return new Response("bad request", { status: 400 });
 		}
+		console.log("EventSub challenge ok:", messageId);
+		await notify(`✅ Twitch подтвердил подписку (challenge ${messageId})`);
 		return new Response(parsed.challenge, {
 			status: 200,
 			headers: {
@@ -63,18 +68,24 @@ export async function POST(request: Request): Promise<Response> {
 	}
 
 	// 2. Проверка, что сообщение действительно от Twitch.
-	const messageId = request.headers.get("twitch-eventsub-message-id") ?? "";
 	const timestamp =
 		request.headers.get("twitch-eventsub-message-timestamp") ?? "";
 	const signature =
 		request.headers.get("twitch-eventsub-message-signature") ?? "";
-	if (!twitch.verifyEventSubSignature(messageId, timestamp, signature, rawBody)) {
+	if (
+		!twitch.verifyEventSubSignature(messageId, timestamp, signature, rawBody)
+	) {
+		console.warn("EventSub bad signature:", messageId);
+		await notify(
+			`⚠️ EventSub: подпись не сошлась (id ${messageId}). Проверь EVENTSUB_SECRET на Vercel.`,
+		);
 		return new Response("bad signature", { status: 403 });
 	}
 
-	// 3. Твич сам отозвал подписку — логируем причину.
+	// 3. Твич сам отозвал подписку — сообщаем и логируем причину.
 	if (messageType === "revocation") {
 		console.warn("EventSub revocation:", rawBody);
+		await notify(`🚫 Twitch отозвал подписку:\n${rawBody.slice(0, 1200)}`);
 		return new Response(null, { status: 204 });
 	}
 
@@ -85,24 +96,43 @@ export async function POST(request: Request): Promise<Response> {
 	// 4. Обработка события запуска стрима.
 	const notification = JSON.parse(rawBody) as Notification;
 	if (notification.subscription?.type !== "stream.online") {
+		console.log(
+			"EventSub notification skipped:",
+			notification.subscription?.type,
+		);
 		return new Response(null, { status: 204 });
 	}
 
+	const event = notification.event ?? {};
+	const channel =
+		event.broadcaster_user_name ?? event.broadcaster_user_login ?? "стример";
+	await notify(
+		`🟣 stream.online от ${channel} (id ${event.broadcaster_user_id ?? "?"}), message ${messageId}`,
+	);
+
 	try {
-		const event = notification.event ?? {};
-		const stream = await twitch.getApiClient().streams.getStreamByUserId(
-			event.broadcaster_user_id ?? "",
-		);
+		const stream = await twitch
+			.getApiClient()
+			.streams.getStreamByUserId(event.broadcaster_user_id ?? "");
 		const text = share.renderTemplate(appConfig.templates.streamOnline, {
-			channel:
-				event.broadcaster_user_name ?? event.broadcaster_user_login ?? "стример",
+			channel,
 			title: stream?.title ?? "—",
 			gameName: stream?.gameName ?? "—",
 			startedAt: stream?.startDate?.toISOString() ?? "—",
 		});
-		await share.postToChannel(bot.telegram, text);
+		const sent = await share.postToChannel(bot.telegram, text);
+		console.log("stream.online posted, message_id:", sent.message_id);
+		await notify(
+			`✅ Пост в канал отправлен (message_id ${sent.message_id})\n«${stream?.title ?? "—"}» / ${stream?.gameName ?? "—"}`,
+		);
 	} catch (err) {
+		const details =
+			err instanceof Error ? (err.stack ?? err.message) : String(err);
 		console.error("stream.online handling failed:", err);
+		await notify(
+			`❌ Ошибка обработки stream.online (Twitch повторит доставку):\n${details.slice(0, 1500)}`,
+		);
+		return new Response(null, { status: 500 });
 	}
 
 	return new Response(null, { status: 204 });

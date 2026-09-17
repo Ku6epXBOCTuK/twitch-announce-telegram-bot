@@ -1,6 +1,6 @@
 import { Markup } from "telegraf";
 import type { Telegram } from "telegraf";
-import type { InlineKeyboardButton } from "telegraf/types";
+import type { InlineKeyboardButton, Message } from "telegraf/types";
 import { getConfig } from "./config.js";
 
 export function inlineKeyboard() {
@@ -20,11 +20,29 @@ export function inlineKeyboard() {
 export async function postToChannel(
 	telegram: Telegram,
 	text: string,
-): Promise<void> {
+): Promise<Message.TextMessage> {
 	const config = getConfig();
-	await telegram.sendMessage(config.telegram.channelId, text, {
+	return telegram.sendMessage(config.telegram.channelId, text, {
 		reply_markup: inlineKeyboard().reply_markup,
 	});
+}
+
+/** Сообщение всем админам (ALLOWED_USER_IDS) в личку. Ничего не бросает — уведомления best-effort. */
+export async function notifyAdmins(
+	telegram: Telegram,
+	text: string,
+): Promise<void> {
+	try {
+		const config = getConfig();
+		const body = text.length > 4000 ? `${text.slice(0, 4000)}…` : text;
+		await Promise.allSettled(
+			config.telegram.allowedUserIds.map((id) =>
+				telegram.sendMessage(id, body),
+			),
+		);
+	} catch {
+		// лог в личку не должен ломать обработку запроса
+	}
 }
 
 export function renderTemplate(
