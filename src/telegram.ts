@@ -1,6 +1,7 @@
-import { Markup, Telegraf } from "telegraf";
+import { type Context, Markup, Telegraf } from "telegraf";
 import { message } from "telegraf/filters";
 import { getConfig } from "./config.js";
+import { describeTelegramFailure } from "./errors.js";
 import { notifyAdmins, postToChannel } from "./share.js";
 import {
 	deleteEventSub,
@@ -9,6 +10,25 @@ import {
 } from "./twitch.js";
 
 let botInstance: Telegraf | null = null;
+
+type ActionRun = () => Promise<string>;
+
+/** Отвечает на нажатие кнопки: показывает и результат, и понятную причину сбоя. */
+async function runAction(
+	ctx: Context,
+	title: string,
+	run: ActionRun,
+): Promise<void> {
+	await ctx.answerCbQuery().catch(() => undefined);
+	try {
+		await ctx.reply(await run());
+	} catch (err) {
+		console.error(`${title} failed:`, err);
+		await ctx
+			.reply(`❌ ${title}: не получилось\n${describeTelegramFailure(err)}`)
+			.catch(() => undefined);
+	}
+}
 
 export function getBot(): Telegraf {
 	if (!botInstance) {
@@ -25,7 +45,19 @@ function createBot(): Telegraf {
 		if (!config.telegram.allowedUserIds.includes(ctx.from.id)) return;
 		if (ctx.message.text.startsWith("/")) return; // команды в канал не идут
 
-		await postToChannel(bot.telegram, ctx.message.text);
+		try {
+			await postToChannel(bot.telegram, ctx.message.text);
+		} catch (err) {
+			// Сбой постинга — отдельная ветка: автор сразу получает причину
+			// (например «chat not found»), а не общий стек из bot.catch.
+			console.error("manual post failed:", err);
+			await ctx
+				.reply(
+					`❌ Не опубликовано:\n${describeTelegramFailure(err, `канал ${config.telegram.channelId}`)}`,
+				)
+				.catch(() => undefined);
+			return;
+		}
 		if (config.telegram.replyToAuthor) {
 			await ctx.reply("Опубликовано").catch(() => undefined);
 		}
@@ -42,39 +74,34 @@ function createBot(): Telegraf {
 		);
 	});
 
-	bot.action("twitch_status", async (ctx) => {
-		await ctx.answerCbQuery();
-		const sub = await getEventSubStatus();
-		await ctx.reply(
-			sub ? `Статус: ${sub.status} (id ${sub.id})` : "Подписки нет",
-		);
-	});
+	bot.action("twitch_status", (ctx) =>
+		runAction(ctx, "Статус подписки", async () => {
+			const sub = await getEventSubStatus();
+			return sub ? `Статус: ${sub.status} (id ${sub.id})` : "Подписки нет";
+		}),
+	);
 
-	bot.action("twitch_on", async (ctx) => {
-		await ctx.answerCbQuery();
-		const result = await subscribeIfNeeded();
-		await ctx.reply(
-			result.changed
+	bot.action("twitch_on", (ctx) =>
+		runAction(ctx, "Включение подписки", async () => {
+			const result = await subscribeIfNeeded();
+			return result.changed
 				? "Подписка создаётся (ждёт подтверждения Twitch)…"
-				: "Подписка уже активна",
-		);
-	});
+				: "Подписка уже активна";
+		}),
+	);
 
-	bot.action("twitch_off", async (ctx) => {
-		await ctx.answerCbQuery();
-		const deleted = await deleteEventSub();
-		await ctx.reply(
-			deleted > 0 ? `Подписка удалена (${deleted})` : "Подписки не было",
-		);
-	});
+	bot.action("twitch_off", (ctx) =>
+		runAction(ctx, "Выключение подписки", async () => {
+			const deleted = await deleteEventSub();
+			return deleted > 0 ? `Подписка удалена (${deleted})` : "Подписки не было";
+		}),
+	);
 
 	bot.catch((err, ctx) => {
 		console.error("bot error:", err, ctx.update);
-		const details =
-			err instanceof Error ? (err.stack ?? err.message) : String(err);
 		void notifyAdmins(
 			bot.telegram,
-			`❌ Ошибка бота:\n${details.slice(0, 1500)}`,
+			`❌ Ошибка бота:\n${describeTelegramFailure(err)}`,
 		);
 	});
 

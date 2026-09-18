@@ -1,5 +1,6 @@
 import type { Telegraf } from "telegraf";
 import type { AppConfig } from "../src/config.js";
+import { describeError, describeTelegramFailure } from "../src/errors.js";
 import { jsonError } from "../src/http.js";
 
 export const config = { runtime: "nodejs", maxDuration: 10 };
@@ -103,13 +104,20 @@ export async function POST(request: Request): Promise<Response> {
 		return new Response(null, { status: 204 });
 	}
 
+	const retry = request.headers.get("twitch-eventsub-message-retry") ?? "0";
 	const event = notification.event ?? {};
 	const channel =
 		event.broadcaster_user_name ?? event.broadcaster_user_login ?? "стример";
 	await notify(
-		`🟣 stream.online от ${channel} (id ${event.broadcaster_user_id ?? "?"}), message ${messageId}`,
+		`🟣 stream.online от ${channel} (id ${event.broadcaster_user_id ?? "?"}), message ${messageId}, retry ${retry}`,
 	);
 
+	// Событие уже принято и подпись проверена, поэтому Twitch нужно подтвердить
+	// в любом случае. Если ответить не-2xx, Twitch повторит доставку того же
+	// message-id (вплоть до отзыва подписки со статусом
+	// notification_failures_exceeded) — это лишние запросы и дубли постов.
+	// Сбои обрабатываем отдельно и только уведомляем админов: у сбора данных о
+	// стриме и у публикации в Telegram разные причины и разные подсказки.
 	try {
 		const stream = await twitch
 			.getApiClient()
@@ -120,19 +128,23 @@ export async function POST(request: Request): Promise<Response> {
 			gameName: stream?.gameName ?? "—",
 			startedAt: stream?.startDate?.toISOString() ?? "—",
 		});
-		const sent = await share.postToChannel(bot.telegram, text);
-		console.log("stream.online posted, message_id:", sent.message_id);
-		await notify(
-			`✅ Пост в канал отправлен (message_id ${sent.message_id})\n«${stream?.title ?? "—"}» / ${stream?.gameName ?? "—"}`,
-		);
+		try {
+			const sent = await share.postToChannel(bot.telegram, text);
+			console.log("stream.online posted, message_id:", sent.message_id);
+			await notify(
+				`✅ Пост в канал отправлен (message_id ${sent.message_id})\n«${stream?.title ?? "—"}» / ${stream?.gameName ?? "—"}`,
+			);
+		} catch (err) {
+			console.error("channel post failed:", err);
+			await notify(
+				`❌ Пост о стриме не опубликован.\n\n${describeTelegramFailure(err, `канал ${appConfig.telegram.channelId}`)}`,
+			);
+		}
 	} catch (err) {
-		const details =
-			err instanceof Error ? (err.stack ?? err.message) : String(err);
-		console.error("stream.online handling failed:", err);
+		console.error("stream data fetch failed:", err);
 		await notify(
-			`❌ Ошибка обработки stream.online (Twitch повторит доставку):\n${details.slice(0, 1500)}`,
+			`❌ Не удалось получить данные стрима «${channel}» из Twitch API.\n\n${describeError(err)}`,
 		);
-		return new Response(null, { status: 500 });
 	}
 
 	return new Response(null, { status: 204 });

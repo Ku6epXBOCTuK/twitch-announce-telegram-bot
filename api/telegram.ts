@@ -1,5 +1,6 @@
 import type { Telegraf } from "telegraf";
 import type { AppConfig } from "../src/config.js";
+import { describeTelegramFailure } from "../src/errors.js";
 import { jsonError } from "../src/http.js";
 
 export const config = { runtime: "nodejs", maxDuration: 10 };
@@ -41,11 +42,9 @@ export async function POST(request: Request): Promise<Response> {
 	} catch (err) {
 		console.error("update handling failed:", err);
 		const share = await import("../src/share.js");
-		const details =
-			err instanceof Error ? (err.stack ?? err.message) : String(err);
 		await share.notifyAdmins(
 			bot.telegram,
-			`❌ Ошибка обработки Telegram update:\n${details.slice(0, 1500)}`,
+			`❌ Ошибка обработки Telegram update:\n${describeTelegramFailure(err)}`,
 		);
 	}
 	// Всегда отвечаем 200, чтобы Telegram не ретраил и не плодил дубли постов.

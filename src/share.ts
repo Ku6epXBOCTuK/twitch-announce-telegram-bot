@@ -35,12 +35,19 @@ export async function notifyAdmins(
 	try {
 		const config = getConfig();
 		const body = text.length > 4000 ? `${text.slice(0, 4000)}…` : text;
-		await Promise.allSettled(
+		const results = await Promise.allSettled(
 			config.telegram.allowedUserIds.map((id) =>
 				telegram.sendMessage(id, body),
 			),
 		);
-	} catch {
+		for (const result of results) {
+			// В личку не долетело — пишем в лог Vercel, чтобы уведомление не потерялось.
+			if (result.status === "rejected") {
+				console.warn("admin notify failed:", result.reason);
+			}
+		}
+	} catch (err) {
+		console.warn("admin notify failed:", err);
 		// лог в личку не должен ломать обработку запроса
 	}
 }

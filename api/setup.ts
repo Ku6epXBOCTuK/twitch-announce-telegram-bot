@@ -1,4 +1,5 @@
 import type { AppConfig } from "../src/config.js";
+import { errorMessage } from "../src/errors.js";
 import { jsonError } from "../src/http.js";
 
 export const config = { runtime: "nodejs", maxDuration: 30 };
@@ -64,7 +65,7 @@ export async function GET(): Promise<Response> {
 			`${TELEGRAM_API}/bot${appConfig.telegram.token}/getWebhookInfo`,
 		);
 	} catch (err) {
-		status.telegramWebhook = { error: String(err) };
+		status.telegramWebhook = { error: errorMessage(err) };
 	}
 
 	try {
@@ -73,7 +74,7 @@ export async function GET(): Promise<Response> {
 			? { id: sub.id, type: sub.type, status: sub.status }
 			: null;
 	} catch (err) {
-		status.subscription = { error: String(err) };
+		status.subscription = { error: errorMessage(err) };
 	}
 
 	return Response.json(status);
@@ -89,8 +90,10 @@ export async function POST(): Promise<Response> {
 	}
 
 	const [webhookResult, subscriptionResult] = await Promise.all([
-		setTelegramWebhook(appConfig).catch((err) => ({ error: String(err) })),
-		twitch.subscribeIfNeeded().catch((err) => ({ error: String(err) })),
+		setTelegramWebhook(appConfig).catch((err) => ({
+			error: errorMessage(err),
+		})),
+		twitch.subscribeIfNeeded().catch((err) => ({ error: errorMessage(err) })),
 	]);
 	return Response.json({
 		webhook: webhookResult,
