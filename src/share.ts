@@ -2,6 +2,7 @@ import { Markup } from "telegraf";
 import type { Telegram } from "telegraf";
 import type { InlineKeyboardButton, Message } from "telegraf/types";
 import { getConfig } from "./config.js";
+import { randomStreamOnlineImage } from "./assets.js";
 
 export function inlineKeyboard() {
 	const config = getConfig();
@@ -20,11 +21,22 @@ export function inlineKeyboard() {
 export async function postToChannel(
 	telegram: Telegram,
 	text: string,
-): Promise<Message.TextMessage> {
+): Promise<Message.TextMessage | Message.PhotoMessage> {
 	const config = getConfig();
-	return telegram.sendMessage(config.telegram.channelId, text, {
-		reply_markup: inlineKeyboard().reply_markup,
-	});
+	const replyMarkup = { reply_markup: inlineKeyboard().reply_markup };
+	// Картинки как «фото» — Telegram умеет JPEG/PNG (jfif это jpeg). Нет файла —
+	// постим как раньше текстом. Ошибка Telegram (битый файл и т.п.) не глотается,
+	// её увидят админы через существующий обработчик.
+	const image = await randomStreamOnlineImage();
+	if (image) {
+		console.log("stream_online image:", image.path);
+		return telegram.sendPhoto(
+			config.telegram.channelId,
+			{ source: image.source },
+			{ caption: text, ...replyMarkup },
+		);
+	}
+	return telegram.sendMessage(config.telegram.channelId, text, replyMarkup);
 }
 
 /** Сообщение всем админам (ALLOWED_USER_IDS) в личку. Ничего не бросает — уведомления best-effort. */
