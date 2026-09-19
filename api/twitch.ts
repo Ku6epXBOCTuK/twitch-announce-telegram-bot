@@ -129,7 +129,9 @@ export async function POST(request: Request): Promise<Response> {
 			startedAt: stream?.startDate?.toISOString() ?? "—",
 		});
 		try {
-			const sent = await share.postToChannel(bot.telegram, text);
+			const sent = await share.postToChannel(bot.telegram, text, {
+				withImage: true,
+			});
 			console.log("stream.online posted, message_id:", sent.message_id);
 			await notify(
 				`✅ Пост в канал отправлен (message_id ${sent.message_id})\n«${stream?.title ?? "—"}» / ${stream?.gameName ?? "—"}`,

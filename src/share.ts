@@ -21,20 +21,24 @@ export function inlineKeyboard() {
 export async function postToChannel(
 	telegram: Telegram,
 	text: string,
+	options: { withImage?: boolean } = {},
 ): Promise<Message.TextMessage | Message.PhotoMessage> {
 	const config = getConfig();
 	const replyMarkup = { reply_markup: inlineKeyboard().reply_markup };
+	// Картинка только для stream.online (withImage), репосты из ЛС — текстом.
 	// Картинки как «фото» — Telegram умеет JPEG/PNG (jfif это jpeg). Нет файла —
 	// постим как раньше текстом. Ошибка Telegram (битый файл и т.п.) не глотается,
 	// её увидят админы через существующий обработчик.
-	const image = await randomStreamOnlineImage();
-	if (image) {
-		console.log("stream_online image:", image.path);
-		return telegram.sendPhoto(
-			config.telegram.channelId,
-			{ source: image.source },
-			{ caption: text, ...replyMarkup },
-		);
+	if (options.withImage) {
+		const image = await randomStreamOnlineImage();
+		if (image) {
+			console.log("stream_online image:", image.path);
+			return telegram.sendPhoto(
+				config.telegram.channelId,
+				{ source: image.source },
+				{ caption: text, ...replyMarkup },
+			);
+		}
 	}
 	return telegram.sendMessage(config.telegram.channelId, text, replyMarkup);
 }
