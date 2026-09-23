@@ -1,6 +1,6 @@
 import { Markup } from "telegraf";
 import type { Telegram } from "telegraf";
-import type { InlineKeyboardButton, Message } from "telegraf/types";
+import type { InlineKeyboardButton, Message, MessageId } from "telegraf/types";
 import { getConfig } from "./config.js";
 import { randomStreamOnlineImage } from "./assets.js";
 
@@ -41,6 +41,20 @@ export async function postToChannel(
 		}
 	}
 	return telegram.sendMessage(config.telegram.channelId, text, replyMarkup);
+}
+
+export async function copyMessageToChannel(
+	telegram: Telegram,
+	fromChatId: number,
+	messageId: number,
+): Promise<MessageId> {
+	const config = getConfig();
+	return telegram.copyMessage(
+		config.telegram.channelId,
+		fromChatId,
+		messageId,
+		{ reply_markup: inlineKeyboard().reply_markup },
+	);
 }
 
 /** Сообщение всем админам (ALLOWED_USER_IDS) в личку. Ничего не бросает — уведомления best-effort. */

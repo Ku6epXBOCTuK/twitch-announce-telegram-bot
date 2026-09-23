@@ -1,8 +1,9 @@
 import { type Context, Markup, Telegraf } from "telegraf";
 import { message } from "telegraf/filters";
+import type { Message } from "telegraf/types";
 import { getConfig } from "./config.js";
 import { describeTelegramFailure } from "./errors.js";
-import { notifyAdmins, postToChannel } from "./share.js";
+import { copyMessageToChannel, notifyAdmins, postToChannel } from "./share.js";
 import {
 	deleteEventSub,
 	getEventSubStatus,
@@ -11,7 +12,22 @@ import {
 
 let botInstance: Telegraf | null = null;
 
+const FORWARDABLE_MEDIA_KEYS = [
+	"animation",
+	"audio",
+	"document",
+	"photo",
+	"sticker",
+	"video",
+	"video_note",
+	"voice",
+] as const;
+
 type ActionRun = () => Promise<string>;
+
+function hasForwardableMedia(message: Message): boolean {
+	return FORWARDABLE_MEDIA_KEYS.some((key) => key in message);
+}
 
 /** Отвечает на нажатие кнопки: показывает и результат, и понятную причину сбоя. */
 async function runAction(
@@ -41,12 +57,25 @@ function createBot(): Telegraf {
 	const config = getConfig();
 	const bot = new Telegraf(config.telegram.token);
 
-	bot.on(message("text"), async (ctx) => {
+	bot.on(message(), async (ctx, next) => {
 		if (!config.telegram.allowedUserIds.includes(ctx.from.id)) return;
-		if (ctx.message.text.startsWith("/")) return; // команды в канал не идут
+		const text =
+			"text" in ctx.message && ctx.message.text.length > 0
+				? ctx.message.text
+				: undefined;
+		if (text?.startsWith("/")) return next();
+		if (!text && !hasForwardableMedia(ctx.message)) return next();
 
 		try {
-			await postToChannel(bot.telegram, ctx.message.text);
+			if (text) {
+				await postToChannel(bot.telegram, text);
+			} else {
+				await copyMessageToChannel(
+					bot.telegram,
+					ctx.chat.id,
+					ctx.message.message_id,
+				);
+			}
 		} catch (err) {
 			// Сбой постинга — отдельная ветка: автор сразу получает причину
 			// (например «chat not found»), а не общий стек из bot.catch.
