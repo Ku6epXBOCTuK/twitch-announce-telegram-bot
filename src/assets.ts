@@ -1,3 +1,4 @@
+import { randomInt } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { readdir } from "node:fs/promises";
 import path from "node:path";
@@ -33,7 +34,7 @@ export async function randomStreamOnlineImage(): Promise<{
 	if (images.length === 0) {
 		return null;
 	}
-	const chosen = images[Math.floor(Math.random() * images.length)];
+	const chosen = images[randomInt(images.length)];
 	const imagePath = path.join(STREAM_ONLINE_DIR, chosen.name);
 	return { path: imagePath, source: createReadStream(imagePath) };
 }
