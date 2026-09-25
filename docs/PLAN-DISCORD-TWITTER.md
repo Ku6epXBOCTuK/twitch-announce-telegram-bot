@@ -1,59 +1,48 @@
 # План: кросс-постинг в Discord и Twitter/X
 
-## Текущая архитектура (точка интеграции)
+## Текущая архитектура
 
-Все посты идут через одну воронку: `postToChannel()` в `src/share.ts:20`.
+Discord публикуется через два независимых вебхука:
 
-- Триггер A: текст в ЛС бота → `src/telegram.ts:24-32` → `postToChannel()`
-- Триггер B: Twitch stream.online → `api/twitch.ts` → `postToChannel()`
+- `DISCORD_STREAM_ONLINE_WEBHOOK_URL` — уведомления Twitch о начале стрима.
+- `DISCORD_POSTS_WEBHOOK_URL` — сообщения и вложения из лички Telegram.
 
-Если добавить Discord/Twitter в `postToChannel()` — оба триггера получат
-кросс-постинг автоматически.
+Триггеры:
 
-**Открытый вопрос (не решён):** Twitch-уведомления тоже идут в Discord/Twitter
-или только ручные посты из ЛС?
+- Сообщение из ЛС → `src/telegram.ts` → Telegram-канал и `posts`-вебхук.
+- `stream.online` → `api/twitch.ts` → Telegram-канал и `stream`-вебхук.
 
-1. Везде — код в `share.ts` (рекомендуется)
-2. Только ручные посты — код в `telegram.ts:28`
+Фотография из Telegram скачивается через Bot API и отправляется в Discord как
+вложение. Для других типов файлов используется тот же механизм; если Discord не
+принимает вложение, текстовая публикация и Telegram-пост не отменяются, а
+администратор получает уведомление о пропуске вложения.
 
-## Часть 1: Discord — вебхук (бесплатно, ~30 минут)
-
-### Решение
-
-Вебхук: один HTTP POST, ноль депенденси, `fetch()` встроен в Node 20+.
+## Часть 1: Discord — вебхуки (реализовано)
 
 ### Setup (клики в Discord)
 
-1. Правой кнопкой по каналу → Edit Channel → Integrations → Webhooks
-2. New Webhook → скопировать URL
-3. Добавить в env: `DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...`
+1. В канале уведомлений: Edit Channel → Integrations → Webhooks → New Webhook.
+2. В отдельном канале постов повторить действие и создать второй вебхук.
+3. Сохранить URL в `DISCORD_STREAM_ONLINE_WEBHOOK_URL` и
+   `DISCORD_POSTS_WEBHOOK_URL`.
 
-### Код (новый файл `src/discord.ts`)
+Переменные необязательные: если URL не задан, соответствующая публикация в
+Discord пропускается, а Telegram продолжает работать.
 
-```ts
-const DISCORD_WEBHOOK_URL = process.env.DISCORD_WEBHOOK_URL!;
+### Реализация
 
-export async function postToDiscord(content: string): Promise<void> {
-  const res = await fetch(DISCORD_WEBHOOK_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content }),
-  });
-  if (!res.ok) {
-    throw new Error(
-      `Discord webhook failed (${res.status}): ${await res.text()}`,
-    );
-  }
-}
-```
-
-### Лимиты
-
-- 30 сообщений/мин на вебхук — с запасом хватает
+- `src/discord.ts` отправляет JSON или `multipart/form-data`.
+- Текст длиннее 2000 символов разбивается на несколько сообщений.
+- Упоминания пользователей и ролей отключаются через `allowed_mentions`.
+- Ошибка Discord не ломает публикацию в Telegram; при сбое отправляется
+  уведомление администраторам.
+- Для `stream.online` случайное изображение выбирается один раз и одни и те же
+  байты отправляются в оба канала.
 
 ### Секреты
 
-- Одна env: `DISCORD_WEBHOOK_URL` (сам URL и есть токен)
+URL вебхуков являются секретами и не должны попадать в логи, ответы API или
+репозиторий.
 
 ## Часть 2: Twitter/X — блокировано оплатой
 
@@ -132,7 +121,8 @@ function requiredEnv(name: string): string {
 ### Новые env-переменные
 
 ```env
-DISCORD_WEBHOOK_URL=
+DISCORD_STREAM_ONLINE_WEBHOOK_URL=
+DISCORD_POSTS_WEBHOOK_URL=
 X_API_KEY=
 X_API_KEY_SECRET=
 X_ACCESS_TOKEN=
@@ -141,10 +131,11 @@ X_ACCESS_TOKEN_SECRET=
 
 ## Порядок реализации (когда решится с оплатой)
 
-1. Добавить `DISCORD_WEBHOOK_URL` в `.env`, `.env.example`, `src/config.ts`
-2. Создать `src/discord.ts` (`postToDiscord`)
-3. Создать `src/x.ts` (`postTweet` + `isTooLong` + `XPostTooLongError`)
-4. Внести вызовы в точку интеграции (зависит от ответа на вопрос выше)
+1. Добавить `DISCORD_STREAM_ONLINE_WEBHOOK_URL` и `DISCORD_POSTS_WEBHOOK_URL` в
+   `.env`, `.env.example`, `src/config.ts`
+2. Создать `src/discord.ts` (`postToDiscord` и загрузку Telegram-вложений)
+3. Встроить вызовы для ручных постов и `stream.online`
+4. Создать `src/x.ts` (`postTweet` + `isTooLong` + `XPostTooLongError`)
 5. Обновить ответ автора: вместо «Опубликовано» — статус по каждой платформе
 6. Установить: `pnpm add twitter-api-v2`
 7. Добавить ключи X в Developer Console

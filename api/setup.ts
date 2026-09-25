@@ -53,6 +53,10 @@ export async function GET(): Promise<Response> {
 			telegramTokenSet: Boolean(appConfig.telegram.token),
 			channelId: appConfig.telegram.channelId,
 			baseUrl: appConfig.baseUrl,
+			discordStreamOnlineWebhookSet: Boolean(
+				appConfig.discord.streamOnlineWebhookUrl,
+			),
+			discordPostsWebhookSet: Boolean(appConfig.discord.postsWebhookUrl),
 			twitchClientIdSet: Boolean(appConfig.twitch.clientId),
 			broadcasterUserId: appConfig.twitch.broadcasterUserId,
 		},

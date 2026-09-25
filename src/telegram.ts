@@ -2,7 +2,8 @@ import { type Context, Markup, Telegraf } from "telegraf";
 import { message } from "telegraf/filters";
 import type { Message } from "telegraf/types";
 import { getConfig } from "./config.js";
-import { describeTelegramFailure } from "./errors.js";
+import { postTelegramMessageToDiscord } from "./discord.js";
+import { describeError, describeTelegramFailure } from "./errors.js";
 import { copyMessageToChannel, notifyAdmins, postToChannel } from "./share.js";
 import {
 	deleteEventSub,
@@ -66,29 +67,56 @@ function createBot(): Telegraf {
 		if (text?.startsWith("/")) return next();
 		if (!text && !hasForwardableMedia(ctx.message)) return next();
 
-		try {
-			if (text) {
-				await postToChannel(bot.telegram, text);
-			} else {
-				await copyMessageToChannel(
-					bot.telegram,
-					ctx.chat.id,
-					ctx.message.message_id,
-				);
-			}
-		} catch (err) {
+		const hasMedia = hasForwardableMedia(ctx.message);
+		const telegramPost = hasMedia
+			? copyMessageToChannel(bot.telegram, ctx.chat.id, ctx.message.message_id)
+			: postToChannel(bot.telegram, text ?? "");
+		const discordPost = postTelegramMessageToDiscord(
+			bot.telegram,
+			"posts",
+			ctx.message,
+		);
+		const [telegramResult, discordResult] = await Promise.allSettled([
+			telegramPost,
+			discordPost,
+		]);
+
+		if (telegramResult.status === "rejected") {
 			// Сбой постинга — отдельная ветка: автор сразу получает причину
 			// (например «chat not found»), а не общий стек из bot.catch.
-			console.error("manual post failed:", err);
+			console.error("manual Telegram post failed:", telegramResult.reason);
 			await ctx
 				.reply(
-					`❌ Не опубликовано:\n${describeTelegramFailure(err, `канал ${config.telegram.channelId}`)}`,
+					`❌ Не опубликовано в Telegram:\n${describeTelegramFailure(telegramResult.reason, `канал ${config.telegram.channelId}`)}`,
 				)
 				.catch(() => undefined);
-			return;
 		}
+		if (discordResult.status === "rejected") {
+			console.error("manual Discord post failed:", discordResult.reason);
+			await notifyAdmins(
+				bot.telegram,
+				`❌ Пост в Discord не опубликован.\n\n${describeError(discordResult.reason)}`,
+			);
+		} else if (discordResult.value.attachmentError) {
+			console.error(
+				"manual Discord media failed:",
+				discordResult.value.attachmentError,
+			);
+			await notifyAdmins(
+				bot.telegram,
+				`⚠️ Текст поста опубликован в Discord, но вложение пропущено.\n\n${describeError(discordResult.value.attachmentError)}`,
+			);
+		}
+		if (telegramResult.status === "rejected") return;
+
 		if (config.telegram.replyToAuthor) {
-			await ctx.reply("Опубликовано").catch(() => undefined);
+			const discordNote =
+				discordResult.status === "rejected"
+					? "\nDiscord: не опубликовано"
+					: discordResult.value.attachmentError
+						? "\nDiscord: текст опубликован, вложение пропущено"
+						: "";
+			await ctx.reply(`Опубликовано${discordNote}`).catch(() => undefined);
 		}
 	});
 

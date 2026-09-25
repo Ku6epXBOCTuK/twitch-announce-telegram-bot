@@ -10,6 +10,10 @@ export type AppConfig = {
 		webhookSecret?: string;
 		replyToAuthor: boolean;
 	};
+	discord: {
+		streamOnlineWebhookUrl?: string;
+		postsWebhookUrl?: string;
+	};
 	twitch: {
 		clientId: string;
 		clientSecret: string;
@@ -66,6 +70,12 @@ function buildConfig(): AppConfig {
 			allowedUserIds: parseUserIds(process.env.ALLOWED_USER_IDS),
 			webhookSecret: process.env.TELEGRAM_WEBHOOK_SECRET,
 			replyToAuthor: process.env.REPLY_TO_AUTHOR !== "false",
+		},
+		discord: {
+			streamOnlineWebhookUrl:
+				process.env.DISCORD_STREAM_ONLINE_WEBHOOK_URL?.trim() || undefined,
+			postsWebhookUrl:
+				process.env.DISCORD_POSTS_WEBHOOK_URL?.trim() || undefined,
 		},
 		twitch: {
 			clientId: requiredEnv("TWITCH_CLIENT_ID"),
